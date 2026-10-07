@@ -1,0 +1,7 @@
+{
+  "name": "FinTrack Personal — Keuangan Pribadi & AI Struk",
+  "description": "Aplikasi pencatatan keuangan pribadi modern dengan AI receipt scanner, multi-rekening, pelacakan hutang piutang, target tabungan, dan analisis laporan keuangan komprehensif.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
