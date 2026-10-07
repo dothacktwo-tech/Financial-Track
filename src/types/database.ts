@@ -3,11 +3,17 @@ export type UserStatus = 'active' | 'inactive';
 
 export interface Profile {
   id: string;
+  username?: string;
   email?: string;
   full_name: string;
   avatar_url?: string;
   role: UserRole;
   status: UserStatus;
+  password?: string;
+  password_hash?: string;
+  last_login_at?: string;
+  phone?: string;
+  notes?: string;
   created_at: string;
   updated_at: string;
 }

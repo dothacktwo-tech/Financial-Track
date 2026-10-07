@@ -89,7 +89,7 @@ export const ReceiptScanner: React.FC<ReceiptScannerProps> = ({
 
   useEffect(() => {
     loadSavedReceipts();
-  }, [user]);
+  }, [user?.id]);
 
   // Stop camera when switching mode or unmounting
   useEffect(() => {

@@ -12,6 +12,8 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownLeft,
+  Database,
+  AlertCircle,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -26,6 +28,7 @@ import { formatCurrency } from '../lib/currency';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/ui/Toast';
 import { getTodayString } from '../lib/date';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface AccountsPageProps {
   accounts: Account[];
@@ -172,10 +175,16 @@ export const Accounts: React.FC<AccountsPageProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-            Rekening & Dompet
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              Rekening & Dompet
+            </h2>
+            <Badge variant={isSupabaseConfigured ? 'emerald' : 'slate'} size="sm">
+              <Database className="w-3 h-3 mr-1" />
+              {isSupabaseConfigured ? 'Supabase Cloud' : 'Lokal'}
+            </Badge>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
             Total aset di seluruh rekening:{' '}
             <strong className="text-slate-800 font-bold">{formatCurrency(totalAssets)}</strong>
           </p>
@@ -247,6 +256,13 @@ export const Accounts: React.FC<AccountsPageProps> = ({
                   <span>Saldo Awal: {formatCurrency(acc.opening_balance)}</span>
                   {acc.description && <span className="truncate max-w-[130px]">{acc.description}</span>}
                 </div>
+
+                {(acc as any)._dbSyncWarning && (
+                  <div className="mt-3 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-1.5 leading-tight">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{(acc as any)._dbSyncWarning}</span>
+                  </div>
+                )}
               </div>
             </Card>
           );

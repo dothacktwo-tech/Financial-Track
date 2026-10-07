@@ -7,8 +7,8 @@ interface AuthContextType {
   user: Profile | null;
   loading: boolean;
   isAdmin: boolean;
-  login: (email: string, password?: string) => Promise<void>;
-  register: (fullName: string, email: string, password?: string) => Promise<void>;
+  login: (username: string, password?: string) => Promise<void>;
+  register: (fullName: string, username: string, password?: string) => Promise<void>;
   logout: () => Promise<void>;
   switchUser: (role: 'user' | 'admin') => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -28,9 +28,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isSupabaseConfigured && supabase) {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const profile = await dataStore.getProfile(session.user.id);
+          let profile = await dataStore.getProfile(session.user.id);
+          if (!profile) {
+            profile = {
+              id: session.user.id,
+              email: session.user.email || '',
+              full_name: (session.user.user_metadata as any)?.full_name || session.user.email?.split('@')[0] || 'Pengguna',
+              avatar_url: (session.user.user_metadata as any)?.avatar_url,
+              role: (session.user.email?.includes('admin') ? 'admin' : 'user'),
+              status: 'active',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            await dataStore.updateProfile(session.user.id, profile);
+          }
           if (profile) {
             setUser(profile);
+            localStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
             setLoading(false);
             return;
           }
@@ -38,14 +52,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Local persistent session
-      const savedUserId = localStorage.getItem(CURRENT_USER_ID_KEY) || defaultUsers[0].id;
-      const profiles = await dataStore.getProfiles();
-      const matched = profiles.find((p) => p.id === savedUserId) || profiles[0] || defaultUsers[0];
-      setUser(matched);
-      localStorage.setItem(CURRENT_USER_ID_KEY, matched.id);
+      const savedUserId = localStorage.getItem(CURRENT_USER_ID_KEY);
+      if (savedUserId) {
+        const profiles = await dataStore.getProfiles();
+        const matched = profiles.find((p) => p.id === savedUserId);
+        if (matched && matched.status !== 'inactive') {
+          setUser((prev) => {
+            if (
+              prev &&
+              prev.id === matched.id &&
+              prev.full_name === matched.full_name &&
+              prev.avatar_url === matched.avatar_url &&
+              prev.role === matched.role &&
+              prev.status === matched.status
+            ) {
+              return prev;
+            }
+            return matched;
+          });
+          setLoading(false);
+          return;
+        } else {
+          localStorage.removeItem(CURRENT_USER_ID_KEY);
+        }
+      }
+
+      // No active session -> show login page
+      setUser(null);
     } catch (e) {
-      console.error('Failed to load user:', e);
-      setUser(defaultUsers[0]);
+      console.error('Failed to load user session:', e);
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -54,83 +90,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadUser();
 
-    const handleStorageUpdate = () => {
-      loadUser();
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setUser(e.detail);
+      } else {
+        loadUser();
+      }
     };
-    window.addEventListener('fintrack_db_updated', handleStorageUpdate);
-    return () => window.removeEventListener('fintrack_db_updated', handleStorageUpdate);
+
+    window.addEventListener('fintrack_profile_updated', handleProfileUpdated);
+    return () => {
+      window.removeEventListener('fintrack_profile_updated', handleProfileUpdated);
+    };
   }, []);
 
-  const login = async (email: string, password?: string) => {
+  const login = async (username: string, password?: string) => {
     setLoading(true);
     try {
-      if (isSupabaseConfigured && supabase && password) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        if (data.user) {
-          const profile = await dataStore.getProfile(data.user.id);
-          if (profile) {
-            setUser(profile);
-            localStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
-            await dataStore.addAuditLog(profile.id, 'LOGIN', 'auth', profile.id, { email });
-            return;
+      const cleanUsername = username.trim().toLowerCase();
+
+      // 1. Coba login melalui Supabase Auth jika username berbentuk email & terkonfigurasi
+      if (isSupabaseConfigured && supabase && password && cleanUsername.includes('@')) {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({ email: cleanUsername, password });
+          if (!error && data?.user) {
+            let profile = await dataStore.getProfile(data.user.id);
+            if (profile) {
+              if (profile.status === 'inactive') {
+                throw new Error('Akun Anda dinonaktifkan oleh Administrator.');
+              }
+              setUser(profile);
+              localStorage.setItem(CURRENT_USER_ID_KEY, profile.id);
+              await dataStore.addAuditLog(profile.id, 'LOGIN', 'auth', profile.id, { username: profile.username || cleanUsername, method: 'supabase_auth' });
+              return;
+            }
           }
+        } catch (supabaseErr: any) {
+          console.warn('[useAuth] Supabase Auth notice:', supabaseErr.message);
         }
       }
 
-      // Find user by email in local store
-      const profiles = await dataStore.getProfiles();
-      let matched = profiles.find((p) => p.email?.toLowerCase() === email.toLowerCase());
+      // 2. Validasi autentikasi login dengan USERNAME melalui data manajemen pengguna
+      const verified = await dataStore.authenticateUser(cleanUsername, password);
 
-      if (!matched) {
-        // If not found in demo, create or fallback
-        matched = {
-          id: 'user-' + Date.now(),
-          email,
-          full_name: email.split('@')[0],
-          role: email.includes('admin') ? 'admin' : 'user',
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        profiles.push(matched);
-      }
-
-      setUser(matched);
-      localStorage.setItem(CURRENT_USER_ID_KEY, matched.id);
-      await dataStore.addAuditLog(matched.id, 'LOGIN', 'auth', matched.id, { email });
+      setUser(verified);
+      localStorage.setItem(CURRENT_USER_ID_KEY, verified.id);
+      await dataStore.addAuditLog(verified.id, 'LOGIN', 'auth', verified.id, { username: verified.username, role: verified.role });
     } finally {
       setLoading(false);
     }
   };
 
-  const register = async (fullName: string, email: string, password?: string) => {
+  const register = async (fullName: string, username: string, password?: string) => {
     setLoading(true);
     try {
-      if (isSupabaseConfigured && supabase && password) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: fullName } },
-        });
-        if (error) throw error;
-      }
-
-      const newProfile: Profile = {
-        id: 'user-' + Date.now(),
-        email,
-        full_name: fullName,
+      const cleanUsername = username.trim().toLowerCase().replace(/\s+/g, '');
+      const created = await dataStore.createUser({
+        full_name: fullName.trim(),
+        username: cleanUsername,
+        password: password || '123456',
         role: 'user',
         status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      });
 
-      const profiles = await dataStore.getProfiles();
-      profiles.push(newProfile);
-      setUser(newProfile);
-      localStorage.setItem(CURRENT_USER_ID_KEY, newProfile.id);
-      await dataStore.addAuditLog(newProfile.id, 'REGISTER', 'auth', newProfile.id, { email, full_name: fullName });
+      setUser(created);
+      localStorage.setItem(CURRENT_USER_ID_KEY, created.id);
+      await dataStore.addAuditLog(created.id, 'REGISTER', 'auth', created.id, { username: cleanUsername, full_name: fullName });
     } finally {
       setLoading(false);
     }

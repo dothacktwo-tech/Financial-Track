@@ -52,17 +52,19 @@ function MainApp() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+  const userId = user?.id;
+
   const refreshAllData = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
     setDataLoading(true);
     try {
       const [accs, cats, txs, dbs, recs, sgs] = await Promise.all([
-        dataStore.getAccounts(user.id),
-        dataStore.getCategories(user.id),
-        dataStore.getTransactions(user.id),
-        dataStore.getDebts(user.id),
-        dataStore.getReceivables(user.id),
-        dataStore.getSavingGoals(user.id),
+        dataStore.getAccounts(userId),
+        dataStore.getCategories(userId),
+        dataStore.getTransactions(userId),
+        dataStore.getDebts(userId),
+        dataStore.getReceivables(userId),
+        dataStore.getSavingGoals(userId),
       ]);
       setAccounts(accs);
       setCategories(cats);
@@ -75,7 +77,7 @@ function MainApp() {
     } finally {
       setDataLoading(false);
     }
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     refreshAllData();

@@ -51,6 +51,8 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
   const [error, setError] = useState<string>('');
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (initialData) {
       setType(initialData.type);
       setAmount(initialData.amount);
@@ -89,7 +91,7 @@ export const TransactionFormModal: React.FC<TransactionFormModalProps> = ({
       setShowItems(false);
     }
     setError('');
-  }, [initialData, isOpen, accounts]);
+  }, [initialData, isOpen]);
 
   // Filter categories by transaction type
   const filteredCategories = categories.filter((c) => c.type === (type === 'transfer' ? 'expense' : type));
